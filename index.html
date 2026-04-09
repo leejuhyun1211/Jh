@@ -21,24 +21,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #
 .total-count { font-weight: 600; }
 .reset-btn { padding: 7px 14px; font-size: 13px; border: 1px solid #ccc; background: #fff; color: #555; border-radius: 8px; cursor: pointer; -webkit-tap-highlight-color: transparent; }
 .tabs-wrap { display: flex; gap: 6px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; overflow-x: auto; padding-bottom: 4px; }
-.tab {
-  padding: 7px 14px; font-size: 13px;
-  border: 1.5px solid #ccc;
-  background: #fff;
-  color: #999;
-  border-radius: 8px;
-  cursor: pointer; white-space: nowrap;
-  font-weight: 400; line-height: 1.5;
-  text-align: center;
-  -webkit-tap-highlight-color: transparent;
-  flex-shrink: 0;
-}
-.tab.active {
-  background: #1d4ed8;
-  color: #ffffff;
-  border-color: #1d4ed8;
-  font-weight: 600;
-}
+.tab { padding: 7px 14px; font-size: 13px; border: 1.5px solid #ccc; background: #fff; color: #999; border-radius: 8px; cursor: pointer; white-space: nowrap; font-weight: 400; line-height: 1.5; text-align: center; -webkit-tap-highlight-color: transparent; flex-shrink: 0; }
+.tab.active { background: #1d4ed8; color: #ffffff; border-color: #1d4ed8; font-weight: 600; }
 .tab .tab-name { display: block; font-size: 13px; }
 .tab .tab-score { display: block; font-size: 11px; margin-top: 2px; }
 .tab.active .tab-score { color: rgba(255,255,255,0.85); }
@@ -63,7 +47,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #
     <div class="stat">O(뱅커) <span class="o-count" id="o-count">0</span> &nbsp; X(플레이어) <span class="x-count" id="x-count">0</span> &nbsp; 총 <span class="total-count" id="total-count">0</span></div>
     <button class="reset-btn" onclick="resetCurrent()">초기화</button>
   </div>
-  <div class="grid-wrapper">
+  <div class="grid-wrapper" id="grid-wrapper">
     <div class="sheet-label">표 1</div>
     <canvas id="s1" style="display:block;touch-action:none;"></canvas>
     <div class="gap"></div>
@@ -78,15 +62,21 @@ body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #
 </div>
 
 <script>
-var COLS=42,ROWS=6,CW=32,CH=28;
-var games={1:{}},gameOrder=[1],currentGame=1,nextId=2;
-var s1=document.getElementById('s1'),s2=document.getElementById('s2');
-s1.width=COLS*CW;s1.height=ROWS*CH;
-s2.width=COLS*CW;s2.height=ROWS*CH;
+var ROWS=6, CW=32, CH=28;
+var BASE_COLS=200, EXPAND_BY=50;
+var games={1:{cols:BASE_COLS}}, gameOrder=[1], currentGame=1, nextId=2;
+var s1=document.getElementById('s1'), s2=document.getElementById('s2');
 
-// 로컬 저장
+function getCols(){ return games[currentGame].cols || BASE_COLS; }
+
+function resizeCanvases(){
+  var cols=getCols();
+  s1.width=cols*CW; s1.height=ROWS*CH;
+  s2.width=cols*CW; s2.height=ROWS*CH;
+}
+
 function saveData(){
-  try{localStorage.setItem('baccarat_games',JSON.stringify(games));localStorage.setItem('baccarat_order',JSON.stringify(gameOrder));localStorage.setItem('baccarat_nextid',nextId);localStorage.setItem('baccarat_current',currentGame);}catch(e){}
+  try{ localStorage.setItem('baccarat_games',JSON.stringify(games)); localStorage.setItem('baccarat_order',JSON.stringify(gameOrder)); localStorage.setItem('baccarat_nextid',nextId); localStorage.setItem('baccarat_current',currentGame); }catch(e){}
 }
 function loadData(){
   try{
@@ -94,29 +84,38 @@ function loadData(){
     var o=localStorage.getItem('baccarat_order');
     var n=localStorage.getItem('baccarat_nextid');
     var c=localStorage.getItem('baccarat_current');
-    if(g)games=JSON.parse(g);
-    if(o)gameOrder=JSON.parse(o);
-    if(n)nextId=parseInt(n);
-    if(c)currentGame=parseInt(c);
+    if(g) games=JSON.parse(g);
+    if(o) gameOrder=JSON.parse(o);
+    if(n) nextId=parseInt(n);
+    if(c) currentGame=parseInt(c);
+    // 구버전 데이터에 cols 없으면 기본값
+    gameOrder.forEach(function(id){ if(!games[id].cols) games[id].cols=BASE_COLS; });
   }catch(e){}
 }
 
 function getCell(canvas,cx,cy){
   var rect=canvas.getBoundingClientRect();
-  var sx=canvas.width/rect.width,sy=canvas.height/rect.height;
-  return{c:Math.floor((cx-rect.left)*sx/CW),r:Math.floor((cy-rect.top)*sy/CH)};
+  var sx=canvas.width/rect.width, sy=canvas.height/rect.height;
+  return{c:Math.floor((cx-rect.left)*sx/CW), r:Math.floor((cy-rect.top)*sy/CH)};
 }
 
 function countGame(id){
-  var d=games[id]||{},o=0,x=0;
-  for(var k in d){if(d[k]==='O')o++;else x++;}
+  var d=games[id]||{}, o=0, x=0;
+  for(var k in d){ if(k==='cols') continue; if(d[k]==='O') o++; else x++; }
   return{o:o,x:x};
 }
 
 function toggle(sid,r,c){
-  var k=sid+'_'+r+'_'+c,d=games[currentGame],v=d[k];
-  if(!v)d[k]='O';else if(v==='O')d[k]='X';else delete d[k];
-  saveData();render();
+  var g=games[currentGame];
+  var cols=g.cols||BASE_COLS;
+  // 마지막 10칸 안에 입력 시 자동 확장
+  if(c >= cols-10){
+    g.cols = cols + EXPAND_BY;
+    resizeCanvases();
+  }
+  var k=sid+'_'+r+'_'+c, v=g[k];
+  if(!v) g[k]='O'; else if(v==='O') g[k]='X'; else delete g[k];
+  saveData(); render();
 }
 
 function addTouchEvents(canvas,sid){
@@ -124,40 +123,45 @@ function addTouchEvents(canvas,sid){
     e.preventDefault();
     var t=e.changedTouches[0];
     var p=getCell(canvas,t.clientX,t.clientY);
-    if(p.r>=0&&p.r<ROWS&&p.c>=0&&p.c<COLS)toggle(sid,p.r,p.c);
+    if(p.r>=0&&p.r<ROWS&&p.c>=0&&p.c<getCols()) toggle(sid,p.r,p.c);
   },{passive:false});
   canvas.addEventListener('click',function(e){
     var p=getCell(canvas,e.clientX,e.clientY);
-    if(p.r>=0&&p.r<ROWS&&p.c>=0&&p.c<COLS)toggle(sid,p.r,p.c);
+    if(p.r>=0&&p.r<ROWS&&p.c>=0&&p.c<getCols()) toggle(sid,p.r,p.c);
   });
 }
-addTouchEvents(s1,'1');addTouchEvents(s2,'2');
+addTouchEvents(s1,'1'); addTouchEvents(s2,'2');
 
 function drawSheet(ctx,sid,lines){
+  var cols=getCols();
   var d=games[currentGame]||{};
-  ctx.clearRect(0,0,COLS*CW,ROWS*CH);
-  ctx.fillStyle='#ffffff';ctx.fillRect(0,0,COLS*CW,ROWS*CH);
-  for(var r=0;r<ROWS;r++)for(var c=0;c<COLS;c++){
+  ctx.clearRect(0,0,cols*CW,ROWS*CH);
+  ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,cols*CW,ROWS*CH);
+
+  for(var r=0;r<ROWS;r++) for(var c=0;c<cols;c++){
     var v=d[sid+'_'+r+'_'+c];
     if(v==='O'){ctx.fillStyle='#eff6ff';ctx.fillRect(c*CW+.5,r*CH+.5,CW-1,CH-1);}
     else if(v==='X'){ctx.fillStyle='#fff1f2';ctx.fillRect(c*CW+.5,r*CH+.5,CW-1,CH-1);}
   }
-  ctx.strokeStyle='#bbbbbb';ctx.lineWidth=0.5;
-  for(var r=0;r<=ROWS;r++){ctx.beginPath();ctx.moveTo(0,r*CH);ctx.lineTo(COLS*CW,r*CH);ctx.stroke();}
-  for(var c=0;c<=COLS;c++){ctx.beginPath();ctx.moveTo(c*CW,0);ctx.lineTo(c*CW,ROWS*CH);ctx.stroke();}
+
+  ctx.strokeStyle='#bbbbbb'; ctx.lineWidth=0.5;
+  for(var r=0;r<=ROWS;r++){ctx.beginPath();ctx.moveTo(0,r*CH);ctx.lineTo(cols*CW,r*CH);ctx.stroke();}
+  for(var c=0;c<=cols;c++){ctx.beginPath();ctx.moveTo(c*CW,0);ctx.lineTo(c*CW,ROWS*CH);ctx.stroke();}
+
   if(lines){
-    ctx.strokeStyle='#e53e3e';ctx.lineWidth=1.2;
+    ctx.strokeStyle='#e53e3e'; ctx.lineWidth=1.2;
     var x=1.5*CW;
-    while(x<COLS*CW){
+    while(x<cols*CW){
       var mod=Math.round(x/CW*100)%300;
       if(mod>1){ctx.beginPath();ctx.moveTo(x,3*CH);ctx.lineTo(x,5*CH);ctx.stroke();}
       x+=1.5*CW;
     }
-    ctx.strokeStyle='#e53e3e';ctx.lineWidth=2.5;
-    for(var c=3;c<COLS;c+=3){ctx.beginPath();ctx.moveTo(c*CW,3*CH);ctx.lineTo(c*CW,ROWS*CH);ctx.stroke();}
+    ctx.strokeStyle='#e53e3e'; ctx.lineWidth=2.5;
+    for(var c=3;c<cols;c+=3){ctx.beginPath();ctx.moveTo(c*CW,3*CH);ctx.lineTo(c*CW,ROWS*CH);ctx.stroke();}
   }
-  ctx.textAlign='center';ctx.textBaseline='middle';ctx.font='500 14px -apple-system,sans-serif';
-  for(var r=0;r<ROWS;r++)for(var c=0;c<COLS;c++){
+
+  ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.font='500 14px -apple-system,sans-serif';
+  for(var r=0;r<ROWS;r++) for(var c=0;c<cols;c++){
     var v=d[sid+'_'+r+'_'+c];
     if(v==='O'){ctx.fillStyle='#1d4ed8';ctx.fillText('O',c*CW+CW/2,r*CH+CH/2);}
     else if(v==='X'){ctx.fillStyle='#dc2626';ctx.fillText('X',c*CW+CW/2,r*CH+CH/2);}
@@ -188,19 +192,19 @@ function renderTabs(){
     wrap.appendChild(btn);
   });
   var add=document.createElement('button');
-  add.className='add-btn';add.textContent='+';
+  add.className='add-btn'; add.textContent='+';
   add.onclick=addGame;
   wrap.appendChild(add);
 }
 
-function switchGame(id){currentGame=id;saveData();render();}
+function switchGame(id){ currentGame=id; saveData(); resizeCanvases(); render(); }
 
 function addGame(){
-  var id=nextId++;games[id]={};gameOrder.push(id);currentGame=id;saveData();render();
+  var id=nextId++; games[id]={cols:BASE_COLS}; gameOrder.push(id); currentGame=id; saveData(); resizeCanvases(); render();
 }
 
 function resetCurrent(){
-  if(confirm('게임 '+currentGame+' 기록을 초기화할까요?')){games[currentGame]={};saveData();render();}
+  if(confirm('게임 '+currentGame+' 기록을 초기화할까요?')){ games[currentGame]={cols:BASE_COLS}; saveData(); resizeCanvases(); render(); }
 }
 
 function render(){
@@ -211,6 +215,7 @@ function render(){
 }
 
 loadData();
+resizeCanvases();
 render();
 
 if('serviceWorker' in navigator){
