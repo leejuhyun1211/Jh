@@ -28,17 +28,24 @@ body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #
 .tab:not(.active) .o-s { color: #1e40af; }
 .tab:not(.active) .x-s { color: #991b1b; }
 .add-btn { padding: 7px 14px; font-size: 18px; line-height: 1; border: 1.5px dashed #ccc; background: transparent; color: #aaa; border-radius: 8px; cursor: pointer; flex-shrink: 0; }
-.grid-wrapper { overflow-x: scroll; -webkit-overflow-scrolling: touch; touch-action: pan-x pan-y; }
-.sheet-label { font-size: 11px; color: #aaa; margin-bottom: 3px; }
-.gap { height: 14px; }
+.grid-wrapper { overflow: auto; -webkit-overflow-scrolling: touch; }
+.sheet-label { font-size: 11px; color: #aaa; margin-bottom: 3px; margin-top: 8px; }
 .legend { display: flex; gap: 12px; margin-top: 10px; font-size: 11px; color: #888; flex-wrap: wrap; }
 .legend-item { display: flex; align-items: center; gap: 4px; }
 .dot { width: 8px; height: 8px; border-radius: 50%; }
 .dot-o { background: #3b82f6; }
 .dot-x { background: #ef4444; }
+/* 롱프레스 피드백 오버레이 */
+#press-indicator {
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
+  background: rgba(0,0,0,0.6); color: #fff;
+  font-size: 15px; padding: 10px 20px; border-radius: 20px;
+  display: none; pointer-events: none; z-index: 999;
+}
 </style>
 </head>
 <body>
+<div id="press-indicator">꾹 누르는 중...</div>
 <div class="container">
   <div class="tabs-wrap" id="tabs"></div>
   <div class="top">
@@ -47,15 +54,15 @@ body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #
   </div>
   <div class="grid-wrapper" id="grid-wrapper">
     <div class="sheet-label">표 1</div>
-    <canvas id="s1" style="display:block;touch-action:pan-x;"></canvas>
-    <div class="gap"></div>
+    <canvas id="s1" style="display:block;"></canvas>
     <div class="sheet-label">표 2</div>
-    <canvas id="s2" style="display:block;touch-action:pan-x;"></canvas>
+    <canvas id="s2" style="display:block;"></canvas>
+    <div style="height:40px;"></div>
   </div>
   <div class="legend">
-    <div class="legend-item"><div class="dot dot-o"></div> 1탭=O 뱅커</div>
-    <div class="legend-item"><div class="dot dot-x"></div> 2탭=X 플레이어</div>
-    <div class="legend-item"><span>3탭=지우기</span></div>
+    <div class="legend-item"><div class="dot dot-o"></div> 꾹(2초)=O 뱅커</div>
+    <div class="legend-item"><div class="dot dot-x"></div> 두번=X 플레이어</div>
+    <div class="legend-item"><span>세번=지우기</span></div>
   </div>
 </div>
 
@@ -64,6 +71,7 @@ var ROWS=6, CW=32, CH=28;
 var BASE_COLS=200, EXPAND_BY=50;
 var games={1:{cols:BASE_COLS}}, gameOrder=[1], currentGame=1, nextId=2;
 var s1=document.getElementById('s1'), s2=document.getElementById('s2');
+var indicator=document.getElementById('press-indicator');
 
 function getCols(){ return games[currentGame].cols||BASE_COLS; }
 
@@ -96,42 +104,6 @@ function countGame(id){
   return{o:o,x:x};
 }
 
-// 탭과 스크롤 구분: 터치 시작/끝 위치 차이로 판단
-var touchStartX=0, touchStartY=0, touchStartTime=0;
-
-function addTouchEvents(canvas, sid){
-  canvas.addEventListener('touchstart', function(e){
-    touchStartX = e.touches[0].clientX;
-    touchStartY = e.touches[0].clientY;
-    touchStartTime = Date.now();
-  }, {passive:true});
-
-  canvas.addEventListener('touchend', function(e){
-    var dx = Math.abs(e.changedTouches[0].clientX - touchStartX);
-    var dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
-    var dt = Date.now() - touchStartTime;
-    // 이동 거리 10px 미만, 시간 300ms 미만 = 탭으로 판단
-    if(dx < 10 && dy < 10 && dt < 300){
-      var t = e.changedTouches[0];
-      var rect = canvas.getBoundingClientRect();
-      var sx = canvas.width/rect.width, sy = canvas.height/rect.height;
-      var c = Math.floor((t.clientX-rect.left)*sx/CW);
-      var r = Math.floor((t.clientY-rect.top)*sy/CH);
-      if(r>=0&&r<ROWS&&c>=0&&c<getCols()) toggle(sid,r,c);
-    }
-  }, {passive:true});
-
-  // 마우스 클릭 (PC)
-  canvas.addEventListener('click', function(e){
-    var rect = canvas.getBoundingClientRect();
-    var sx = canvas.width/rect.width, sy = canvas.height/rect.height;
-    var c = Math.floor((e.clientX-rect.left)*sx/CW);
-    var r = Math.floor((e.clientY-rect.top)*sy/CH);
-    if(r>=0&&r<ROWS&&c>=0&&c<getCols()) toggle(sid,r,c);
-  });
-}
-addTouchEvents(s1,'1'); addTouchEvents(s2,'2');
-
 function toggle(sid,r,c){
   var g=games[currentGame];
   var cols=g.cols||BASE_COLS;
@@ -140,6 +112,65 @@ function toggle(sid,r,c){
   if(!v) g[k]='O'; else if(v==='O') g[k]='X'; else delete g[k];
   saveData(); render();
 }
+
+// 롱프레스 상태
+var pressTimer=null, pressCanvas=null, pressSid=null, pressR=-1, pressC=-1, pressMoved=false;
+var LONG_PRESS_MS = 600; // 0.6초
+
+function getCanvasCell(canvas, cx, cy){
+  var rect=canvas.getBoundingClientRect();
+  var sx=canvas.width/rect.width, sy=canvas.height/rect.height;
+  return{ c:Math.floor((cx-rect.left)*sx/CW), r:Math.floor((cy-rect.top)*sy/CH) };
+}
+
+function cancelPress(){
+  if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; }
+  indicator.style.display='none';
+  pressCanvas=null; pressSid=null; pressR=-1; pressC=-1;
+}
+
+function addTouchEvents(canvas, sid){
+  canvas.addEventListener('touchstart', function(e){
+    pressMoved=false;
+    var t=e.touches[0];
+    var p=getCanvasCell(canvas, t.clientX, t.clientY);
+    if(p.r<0||p.r>=ROWS||p.c<0||p.c>=getCols()) return;
+    pressCanvas=canvas; pressSid=sid; pressR=p.r; pressC=p.c;
+    indicator.style.display='block';
+    pressTimer=setTimeout(function(){
+      if(!pressMoved){
+        indicator.style.display='none';
+        toggle(sid, pressR, pressC);
+        // 진동 피드백 (지원 시)
+        if(navigator.vibrate) navigator.vibrate(30);
+      }
+      pressTimer=null;
+    }, LONG_PRESS_MS);
+  }, {passive:true});
+
+  canvas.addEventListener('touchmove', function(e){
+    // 10px 이상 움직이면 스크롤로 판단, 롱프레스 취소
+    if(pressTimer){
+      var t=e.touches[0];
+      var p=getCanvasCell(canvas, t.clientX, t.clientY);
+      if(p.r!==pressR || p.c!==pressC){ pressMoved=true; cancelPress(); }
+    }
+  }, {passive:true});
+
+  canvas.addEventListener('touchend', function(e){
+    cancelPress();
+  }, {passive:true});
+
+  canvas.addEventListener('touchcancel', function(){ cancelPress(); }, {passive:true});
+
+  // PC 마우스 클릭
+  canvas.addEventListener('click', function(e){
+    var p=getCanvasCell(canvas, e.clientX, e.clientY);
+    if(p.r>=0&&p.r<ROWS&&p.c>=0&&p.c<getCols()) toggle(sid,p.r,p.c);
+  });
+}
+
+addTouchEvents(s1,'1'); addTouchEvents(s2,'2');
 
 function drawSheet(ctx,sid,lines){
   var cols=getCols();
@@ -214,7 +245,6 @@ function render(){
 }
 
 loadData(); resizeCanvases(); render();
-
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(function(){}); }
 </script>
 </body>
