@@ -11,24 +11,45 @@
 <title>바카라 체크시트</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
-html, body {
-  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+html, body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #f5f5f5; height: 100%; overflow: hidden; }
+
+/* 상단 고정 헤더 */
+#header {
+  position: fixed;
+  top: 0; left: 0; right: 0;
   background: #f5f5f5;
-  height: 100%;
-  overflow: hidden;
+  padding: 10px 12px 8px;
+  z-index: 200;
+  border-bottom: 1px solid #ddd;
 }
-/* 전체 페이지를 가로 스크롤 컨테이너로 */
+.tabs-wrap { display: flex; gap: 6px; align-items: center; margin-bottom: 8px; flex-wrap: wrap; }
+.tab { padding: 6px 12px; font-size: 13px; border: 1.5px solid #ccc; background: #fff; color: #999; border-radius: 8px; cursor: pointer; white-space: nowrap; font-weight: 400; line-height: 1.4; text-align: center; flex-shrink: 0; }
+.tab.active { background: #1d4ed8; color: #fff; border-color: #1d4ed8; font-weight: 600; }
+.tab .tab-name { display: block; font-size: 13px; }
+.tab .tab-score { display: block; font-size: 10px; margin-top: 1px; }
+.tab.active .tab-score { color: rgba(255,255,255,0.85); }
+.tab:not(.active) .o-s { color: #1e40af; }
+.tab:not(.active) .x-s { color: #991b1b; }
+.add-btn { padding: 6px 12px; font-size: 18px; line-height: 1; border: 1.5px dashed #ccc; background: transparent; color: #aaa; border-radius: 8px; cursor: pointer; flex-shrink: 0; }
+.top { display: flex; gap: 8px; align-items: center; }
+.stat { font-size: 12px; color: #666; padding: 4px 10px; border-radius: 8px; background: #e8e8e8; white-space: nowrap; }
+.o-count { color: #1e40af; font-weight: 600; }
+.x-count { color: #991b1b; font-weight: 600; }
+.total-count { font-weight: 600; }
+.reset-btn { padding: 6px 12px; font-size: 13px; border: 1px solid #ccc; background: #fff; color: #555; border-radius: 8px; cursor: pointer; white-space: nowrap; }
+
+/* 스크롤 영역 - 헤더 높이만큼 아래에서 시작 */
 #page {
-  width: 100vw;
-  height: 100vh;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 20px;
   overflow-x: scroll;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
+  padding-top: 0; /* JS로 헤더 높이 설정 */
 }
 #page::-webkit-scrollbar { display: none; }
 
-/* 안쪽 콘텐츠는 캔버스 너비에 맞게 늘어남 */
 #inner {
   display: inline-block;
   min-width: 100vw;
@@ -36,36 +57,17 @@ html, body {
   vertical-align: top;
 }
 
-.top { display: flex; gap: 8px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
-.stat { font-size: 12px; color: #666; padding: 4px 10px; border-radius: 8px; background: #e8e8e8; white-space: nowrap; }
-.o-count { color: #1e40af; font-weight: 600; }
-.x-count { color: #991b1b; font-weight: 600; }
-.total-count { font-weight: 600; }
-.reset-btn { padding: 7px 14px; font-size: 13px; border: 1px solid #ccc; background: #fff; color: #555; border-radius: 8px; cursor: pointer; white-space: nowrap; }
+.sheet-label { font-size: 11px; color: #aaa; margin-bottom: 3px; margin-top: 6px; }
 
-.tabs-wrap { display: flex; gap: 6px; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
-.tab { padding: 7px 14px; font-size: 13px; border: 1.5px solid #ccc; background: #fff; color: #999; border-radius: 8px; cursor: pointer; white-space: nowrap; font-weight: 400; line-height: 1.5; text-align: center; flex-shrink: 0; }
-.tab.active { background: #1d4ed8; color: #fff; border-color: #1d4ed8; font-weight: 600; }
-.tab .tab-name { display: block; font-size: 13px; }
-.tab .tab-score { display: block; font-size: 11px; margin-top: 2px; }
-.tab.active .tab-score { color: rgba(255,255,255,0.85); }
-.tab:not(.active) .o-s { color: #1e40af; }
-.tab:not(.active) .x-s { color: #991b1b; }
-.add-btn { padding: 7px 14px; font-size: 18px; line-height: 1; border: 1.5px dashed #ccc; background: transparent; color: #aaa; border-radius: 8px; cursor: pointer; flex-shrink: 0; }
-
-.sheet-label { font-size: 11px; color: #aaa; margin-bottom: 3px; margin-top: 8px; }
-
-/* 커스텀 스크롤바 - 화면 하단 고정 */
+/* 하단 고정 스크롤바 */
 #scrollbar-track {
   position: fixed;
-  bottom: 8px;
-  left: 12px;
-  right: 12px;
+  bottom: 4px; left: 12px; right: 12px;
   height: 10px;
   background: #ddd;
   border-radius: 5px;
   cursor: pointer;
-  z-index: 100;
+  z-index: 200;
 }
 #scrollbar-thumb {
   height: 10px;
@@ -77,13 +79,6 @@ html, body {
   opacity: 0.75;
   cursor: grab;
 }
-#scrollbar-thumb:active { opacity: 1; cursor: grabbing; }
-
-.legend { display: flex; gap: 12px; margin-top: 10px; margin-bottom: 20px; font-size: 11px; color: #888; flex-wrap: wrap; }
-.legend-item { display: flex; align-items: center; gap: 4px; }
-.dot { width: 8px; height: 8px; border-radius: 50%; }
-.dot-o { background: #3b82f6; }
-.dot-x { background: #ef4444; }
 
 #press-indicator {
   position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
@@ -95,22 +90,28 @@ html, body {
 </head>
 <body>
 <div id="press-indicator">꾹 누르는 중...</div>
+
+<!-- 고정 헤더 -->
+<div id="header">
+  <div class="tabs-wrap" id="tabs"></div>
+  <div class="top">
+    <div class="stat">O(뱅커) <span class="o-count" id="o-count">0</span> &nbsp; X(플레이어) <span class="x-count" id="x-count">0</span> &nbsp; 총 <span class="total-count" id="total-count">0</span></div>
+    <button class="reset-btn" onclick="resetCurrent()">초기화</button>
+  </div>
+</div>
+
+<!-- 가로 스크롤 영역 -->
 <div id="page">
   <div id="inner">
-    <div class="tabs-wrap" id="tabs"></div>
-    <div class="top">
-      <div class="stat">O(뱅커) <span class="o-count" id="o-count">0</span> &nbsp; X(플레이어) <span class="x-count" id="x-count">0</span> &nbsp; 총 <span class="total-count" id="total-count">0</span></div>
-      <button class="reset-btn" onclick="resetCurrent()">초기화</button>
-    </div>
     <div class="sheet-label">표 1</div>
     <canvas id="s1" style="display:block;"></canvas>
     <div class="sheet-label">표 2</div>
     <canvas id="s2" style="display:block;"></canvas>
-    <div class="legend">
-      <div class="legend-item"><div class="dot dot-o"></div> 꾹(0.6초) = O→X→지우기</div>
-    </div>
+    <div style="height:10px;"></div>
   </div>
 </div>
+
+<!-- 하단 스크롤바 -->
 <div id="scrollbar-track"><div id="scrollbar-thumb"></div></div>
 
 <script>
@@ -121,8 +122,15 @@ var s1=document.getElementById('s1'), s2=document.getElementById('s2');
 var indicator=document.getElementById('press-indicator');
 var page=document.getElementById('page');
 var inner=document.getElementById('inner');
+var header=document.getElementById('header');
 var track=document.getElementById('scrollbar-track');
 var thumb=document.getElementById('scrollbar-thumb');
+
+// 헤더 높이만큼 page top 설정
+function adjustLayout(){
+  var hh=header.offsetHeight;
+  page.style.top=hh+'px';
+}
 
 function getCols(){ return games[currentGame].cols||BASE_COLS; }
 
@@ -143,7 +151,6 @@ function updateScrollbar(){
   var sr=page.scrollLeft/(sw-cw);
   thumb.style.left=(sr*(track.clientWidth-tw))+'px';
 }
-
 page.addEventListener('scroll', updateScrollbar);
 
 var thumbDrag=false, thumbStartX=0, scrollStart=0;
@@ -168,8 +175,7 @@ document.addEventListener('mouseup',function(){ thumbDrag=false; });
 track.addEventListener('click',function(e){
   if(e.target===thumb) return;
   var rect=track.getBoundingClientRect();
-  var ratio=(e.clientX-rect.left)/track.clientWidth;
-  page.scrollLeft=ratio*(page.scrollWidth-page.clientWidth);
+  page.scrollLeft=(e.clientX-rect.left)/track.clientWidth*(page.scrollWidth-page.clientWidth);
 });
 
 function saveData(){
@@ -200,22 +206,19 @@ function toggle(sid,r,c){
   saveData(); render();
 }
 
-var pressTimer=null, pressR=-1, pressC=-1, pressSid=null, pressMoved=false, txStart=0, tyStart=0;
+var pressTimer=null, pressR=-1, pressC=-1, pressMoved=false, txStart=0, tyStart=0;
 var LONG_MS=600;
-
 function cancelPress(){ if(pressTimer){clearTimeout(pressTimer);pressTimer=null;} indicator.style.display='none'; }
 
 function addEvents(canvas, sid){
   canvas.addEventListener('touchstart',function(e){
     if(thumbDrag) return;
     pressMoved=false;
-    var t=e.touches[0];
-    txStart=t.clientX; tyStart=t.clientY;
+    var t=e.touches[0]; txStart=t.clientX; tyStart=t.clientY;
     var rect=canvas.getBoundingClientRect();
     var sx=canvas.width/rect.width, sy=canvas.height/rect.height;
     pressC=Math.floor((t.clientX-rect.left)*sx/CW);
     pressR=Math.floor((t.clientY-rect.top)*sy/CH);
-    pressSid=sid;
     if(pressR<0||pressR>=ROWS||pressC<0||pressC>=getCols()) return;
     indicator.style.display='block';
     pressTimer=setTimeout(function(){
@@ -289,6 +292,7 @@ function renderTabs(){
   var add=document.createElement('button');
   add.className='add-btn'; add.textContent='+'; add.onclick=addGame;
   wrap.appendChild(add);
+  adjustLayout();
 }
 
 function switchGame(id){ currentGame=id; saveData(); resizeCanvases(); render(); }
@@ -303,6 +307,7 @@ function render(){
 }
 
 loadData(); resizeCanvases(); render();
+window.addEventListener('resize', function(){ adjustLayout(); updateScrollbar(); });
 if('serviceWorker' in navigator){ navigator.serviceWorker.register('sw.js').catch(function(){}); }
 </script>
 </body>
