@@ -28,14 +28,41 @@ body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #
 .tab:not(.active) .o-s { color: #1e40af; }
 .tab:not(.active) .x-s { color: #991b1b; }
 .add-btn { padding: 7px 14px; font-size: 18px; line-height: 1; border: 1.5px dashed #ccc; background: transparent; color: #aaa; border-radius: 8px; cursor: pointer; flex-shrink: 0; }
-.grid-wrapper { overflow: auto; -webkit-overflow-scrolling: touch; }
 .sheet-label { font-size: 11px; color: #aaa; margin-bottom: 3px; margin-top: 8px; }
+/* 그리드 래퍼: 네이티브 스크롤바 숨김 */
+.grid-wrapper {
+  overflow-x: scroll;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.grid-wrapper::-webkit-scrollbar { display: none; }
+/* 커스텀 스크롤바 트랙 */
+.scrollbar-track {
+  width: 100%;
+  height: 10px;
+  background: #e0e0e0;
+  border-radius: 5px;
+  margin-top: 8px;
+  position: relative;
+  cursor: pointer;
+}
+.scrollbar-thumb {
+  height: 10px;
+  background: #1d4ed8;
+  border-radius: 5px;
+  position: absolute;
+  top: 0; left: 0;
+  cursor: grab;
+  min-width: 30px;
+  opacity: 0.7;
+}
+.scrollbar-thumb:active { cursor: grabbing; opacity: 1; }
 .legend { display: flex; gap: 12px; margin-top: 10px; font-size: 11px; color: #888; flex-wrap: wrap; }
 .legend-item { display: flex; align-items: center; gap: 4px; }
 .dot { width: 8px; height: 8px; border-radius: 50%; }
 .dot-o { background: #3b82f6; }
 .dot-x { background: #ef4444; }
-/* 롱프레스 피드백 오버레이 */
 #press-indicator {
   position: fixed; top: 50%; left: 50%; transform: translate(-50%,-50%);
   background: rgba(0,0,0,0.6); color: #fff;
@@ -57,12 +84,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; background: #
     <canvas id="s1" style="display:block;"></canvas>
     <div class="sheet-label">표 2</div>
     <canvas id="s2" style="display:block;"></canvas>
-    <div style="height:40px;"></div>
+  </div>
+  <div class="scrollbar-track" id="scrollbar-track">
+    <div class="scrollbar-thumb" id="scrollbar-thumb"></div>
   </div>
   <div class="legend">
-    <div class="legend-item"><div class="dot dot-o"></div> 꾹(2초)=O 뱅커</div>
-    <div class="legend-item"><div class="dot dot-x"></div> 두번=X 플레이어</div>
-    <div class="legend-item"><span>세번=지우기</span></div>
+    <div class="legend-item"><div class="dot dot-o"></div> 꾹(0.6초)=O→X→지우기</div>
   </div>
 </div>
 
@@ -72,6 +99,9 @@ var BASE_COLS=200, EXPAND_BY=50;
 var games={1:{cols:BASE_COLS}}, gameOrder=[1], currentGame=1, nextId=2;
 var s1=document.getElementById('s1'), s2=document.getElementById('s2');
 var indicator=document.getElementById('press-indicator');
+var gridWrapper=document.getElementById('grid-wrapper');
+var track=document.getElementById('scrollbar-track');
+var thumb=document.getElementById('scrollbar-thumb');
 
 function getCols(){ return games[currentGame].cols||BASE_COLS; }
 
@@ -79,7 +109,63 @@ function resizeCanvases(){
   var cols=getCols();
   s1.width=cols*CW; s1.height=ROWS*CH;
   s2.width=cols*CW; s2.height=ROWS*CH;
+  updateScrollbar();
 }
+
+// 스크롤바 동기화
+function updateScrollbar(){
+  var scrollWidth=gridWrapper.scrollWidth;
+  var clientWidth=gridWrapper.clientWidth;
+  if(scrollWidth<=clientWidth){ thumb.style.width='100%'; return; }
+  var ratio=clientWidth/scrollWidth;
+  var thumbW=Math.max(30, track.clientWidth*ratio);
+  thumb.style.width=thumbW+'px';
+  var scrollRatio=gridWrapper.scrollLeft/(scrollWidth-clientWidth);
+  var maxLeft=track.clientWidth-thumbW;
+  thumb.style.left=(scrollRatio*maxLeft)+'px';
+}
+
+gridWrapper.addEventListener('scroll', updateScrollbar);
+
+// 스크롤바 드래그
+var thumbDragging=false, thumbStartX=0, scrollStartLeft=0;
+thumb.addEventListener('touchstart', function(e){
+  thumbDragging=true;
+  thumbStartX=e.touches[0].clientX;
+  scrollStartLeft=gridWrapper.scrollLeft;
+  e.stopPropagation();
+},{passive:true});
+thumb.addEventListener('mousedown', function(e){
+  thumbDragging=true;
+  thumbStartX=e.clientX;
+  scrollStartLeft=gridWrapper.scrollLeft;
+  e.preventDefault();
+});
+document.addEventListener('touchmove', function(e){
+  if(!thumbDragging) return;
+  var dx=e.touches[0].clientX-thumbStartX;
+  var scrollWidth=gridWrapper.scrollWidth, clientWidth=gridWrapper.clientWidth;
+  var ratio=(scrollWidth-clientWidth)/(track.clientWidth-thumb.clientWidth);
+  gridWrapper.scrollLeft=scrollStartLeft+dx*ratio;
+},{passive:true});
+document.addEventListener('mousemove', function(e){
+  if(!thumbDragging) return;
+  var dx=e.clientX-thumbStartX;
+  var scrollWidth=gridWrapper.scrollWidth, clientWidth=gridWrapper.clientWidth;
+  var ratio=(scrollWidth-clientWidth)/(track.clientWidth-thumb.clientWidth);
+  gridWrapper.scrollLeft=scrollStartLeft+dx*ratio;
+});
+document.addEventListener('touchend', function(){ thumbDragging=false; },{passive:true});
+document.addEventListener('mouseup', function(){ thumbDragging=false; });
+
+// 트랙 클릭으로 이동
+track.addEventListener('click', function(e){
+  if(e.target===thumb) return;
+  var rect=track.getBoundingClientRect();
+  var ratio=(e.clientX-rect.left)/track.clientWidth;
+  var scrollWidth=gridWrapper.scrollWidth, clientWidth=gridWrapper.clientWidth;
+  gridWrapper.scrollLeft=ratio*(scrollWidth-clientWidth);
+});
 
 function saveData(){
   try{ localStorage.setItem('baccarat_games',JSON.stringify(games)); localStorage.setItem('baccarat_order',JSON.stringify(gameOrder)); localStorage.setItem('baccarat_nextid',nextId); localStorage.setItem('baccarat_current',currentGame); }catch(e){}
@@ -107,74 +193,64 @@ function countGame(id){
 function toggle(sid,r,c){
   var g=games[currentGame];
   var cols=g.cols||BASE_COLS;
-  if(c >= cols-10){ g.cols=cols+EXPAND_BY; resizeCanvases(); }
+  if(c>=cols-10){ g.cols=cols+EXPAND_BY; resizeCanvases(); }
   var k=sid+'_'+r+'_'+c, v=g[k];
   if(!v) g[k]='O'; else if(v==='O') g[k]='X'; else delete g[k];
   saveData(); render();
 }
 
-// 롱프레스 상태
-var pressTimer=null, pressCanvas=null, pressSid=null, pressR=-1, pressC=-1, pressMoved=false;
-var LONG_PRESS_MS = 600; // 0.6초
-
-function getCanvasCell(canvas, cx, cy){
-  var rect=canvas.getBoundingClientRect();
-  var sx=canvas.width/rect.width, sy=canvas.height/rect.height;
-  return{ c:Math.floor((cx-rect.left)*sx/CW), r:Math.floor((cy-rect.top)*sy/CH) };
-}
+var pressTimer=null, pressR=-1, pressC=-1, pressSid=null, pressMoved=false;
+var LONG_PRESS_MS=600;
+var touchStartX=0, touchStartY=0;
 
 function cancelPress(){
   if(pressTimer){ clearTimeout(pressTimer); pressTimer=null; }
   indicator.style.display='none';
-  pressCanvas=null; pressSid=null; pressR=-1; pressC=-1;
 }
 
 function addTouchEvents(canvas, sid){
   canvas.addEventListener('touchstart', function(e){
     pressMoved=false;
     var t=e.touches[0];
-    var p=getCanvasCell(canvas, t.clientX, t.clientY);
-    if(p.r<0||p.r>=ROWS||p.c<0||p.c>=getCols()) return;
-    pressCanvas=canvas; pressSid=sid; pressR=p.r; pressC=p.c;
+    touchStartX=t.clientX; touchStartY=t.clientY;
+    var rect=canvas.getBoundingClientRect();
+    var sx=canvas.width/rect.width, sy=canvas.height/rect.height;
+    pressC=Math.floor((t.clientX-rect.left)*sx/CW);
+    pressR=Math.floor((t.clientY-rect.top)*sy/CH);
+    pressSid=sid;
+    if(pressR<0||pressR>=ROWS||pressC<0||pressC>=getCols()) return;
     indicator.style.display='block';
     pressTimer=setTimeout(function(){
       if(!pressMoved){
         indicator.style.display='none';
         toggle(sid, pressR, pressC);
-        // 진동 피드백 (지원 시)
         if(navigator.vibrate) navigator.vibrate(30);
       }
       pressTimer=null;
     }, LONG_PRESS_MS);
-  }, {passive:true});
+  },{passive:true});
 
   canvas.addEventListener('touchmove', function(e){
-    // 10px 이상 움직이면 스크롤로 판단, 롱프레스 취소
-    if(pressTimer){
-      var t=e.touches[0];
-      var p=getCanvasCell(canvas, t.clientX, t.clientY);
-      if(p.r!==pressR || p.c!==pressC){ pressMoved=true; cancelPress(); }
-    }
-  }, {passive:true});
+    var dx=Math.abs(e.touches[0].clientX-touchStartX);
+    var dy=Math.abs(e.touches[0].clientY-touchStartY);
+    if(dx>8||dy>8){ pressMoved=true; cancelPress(); }
+  },{passive:true});
 
-  canvas.addEventListener('touchend', function(e){
-    cancelPress();
-  }, {passive:true});
+  canvas.addEventListener('touchend', function(){ cancelPress(); },{passive:true});
+  canvas.addEventListener('touchcancel', function(){ cancelPress(); },{passive:true});
 
-  canvas.addEventListener('touchcancel', function(){ cancelPress(); }, {passive:true});
-
-  // PC 마우스 클릭
   canvas.addEventListener('click', function(e){
-    var p=getCanvasCell(canvas, e.clientX, e.clientY);
-    if(p.r>=0&&p.r<ROWS&&p.c>=0&&p.c<getCols()) toggle(sid,p.r,p.c);
+    var rect=canvas.getBoundingClientRect();
+    var sx=canvas.width/rect.width, sy=canvas.height/rect.height;
+    var c=Math.floor((e.clientX-rect.left)*sx/CW);
+    var r=Math.floor((e.clientY-rect.top)*sy/CH);
+    if(r>=0&&r<ROWS&&c>=0&&c<getCols()) toggle(sid,r,c);
   });
 }
-
 addTouchEvents(s1,'1'); addTouchEvents(s2,'2');
 
 function drawSheet(ctx,sid,lines){
-  var cols=getCols();
-  var d=games[currentGame]||{};
+  var cols=getCols(), d=games[currentGame]||{};
   ctx.clearRect(0,0,cols*CW,ROWS*CH);
   ctx.fillStyle='#ffffff'; ctx.fillRect(0,0,cols*CW,ROWS*CH);
   for(var r=0;r<ROWS;r++) for(var c=0;c<cols;c++){
@@ -242,6 +318,7 @@ function render(){
   drawSheet(s1.getContext('2d'),'1',false);
   drawSheet(s2.getContext('2d'),'2',true);
   updateStats();
+  updateScrollbar();
 }
 
 loadData(); resizeCanvases(); render();
